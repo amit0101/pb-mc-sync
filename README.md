@@ -99,10 +99,19 @@ pb-mc-sync/
 
 ## 💰 Cost
 
-- **PostgreSQL**: $7/month (Starter plan)
-- **Web Dashboard**: FREE (free tier)
-- **Cron Jobs**: FREE (2 jobs)
+**Option 1: Free Tier (Testing/Development)**
+- **PostgreSQL**: FREE for 30 days (1 GB, no backups, expires)
+- **Web Dashboard**: FREE
+- **Cron Jobs**: FREE
+- **Total**: $0/month (limited time)
+
+**Option 2: Production (Recommended)**
+- **PostgreSQL**: $7/month (Starter: 10 GB, backups included)
+- **Web Dashboard**: FREE
+- **Cron Jobs**: FREE
 - **Total**: $7/month
+
+> ⚠️ **Note**: Free database expires after 30 days. For production with 50K+ records, the $7 Starter plan is recommended for reliability and backups.
 
 ## 🔧 Environment Variables
 

@@ -6,7 +6,7 @@ databases:
     databaseName: pabau_mailchimp
     user: pabau_user
     region: oregon
-    plan: starter
+    plan: free  # Options: free (1GB, expires in 30 days), starter ($7/mo, 10GB, backups)
     ipAllowList: []
     postgresMajorVersion: "15"
 
