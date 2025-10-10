@@ -1,0 +1,80 @@
+# Render Blueprint - Pabau-Mailchimp Sync System
+# Deploys PostgreSQL database, web dashboard, and cron jobs for syncing
+
+databases:
+  - name: pabau-mailchimp-db
+    databaseName: pabau_mailchimp
+    user: pabau_user
+    region: oregon
+    plan: starter
+    ipAllowList: []
+    postgresMajorVersion: "15"
+
+services:
+  # WEB DASHBOARD: View sync logs and statistics
+  - type: web
+    name: pabau-mailchimp-dashboard
+    runtime: python
+    region: oregon
+    plan: free
+    healthCheckPath: /health
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn dashboard:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pabau-mailchimp-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.11"
+  # FAST SYNC: Mailchimp <-> Database (every 30 minutes)
+  - type: cron
+    name: mailchimp-sync-fast
+    runtime: python
+    region: oregon
+    schedule: "*/30 * * * *"  # Every 30 minutes
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -c 'import asyncio; from scripts.sync.fetch_mailchimp_unsubscribes import fetch_unsubscribes; from scripts.sync.sync_db_to_mailchimp import sync_to_mailchimp; asyncio.run(fetch_unsubscribes()); asyncio.run(sync_to_mailchimp())'"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pabau-mailchimp-db
+          property: connectionString
+      - key: PABAU_API_KEY
+        sync: false
+      - key: PABAU_API_URL
+        sync: false
+      - key: PABAU_COMPANY_ID
+        sync: false
+      - key: MAILCHIMP_API_KEY
+        sync: false
+      - key: MAILCHIMP_API_URL
+        sync: false
+      - key: MAILCHIMP_LIST_ID
+        sync: false
+
+  # SLOW SYNC: Pabau -> Database (every 4 hours)
+  - type: cron
+    name: pabau-sync-slow
+    runtime: python
+    region: oregon
+    schedule: "0 */4 * * *"  # Every 4 hours (at :00)
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python scripts/sync/sync_pabau_to_db.py"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pabau-mailchimp-db
+          property: connectionString
+      - key: PABAU_API_KEY
+        sync: false
+      - key: PABAU_API_URL
+        sync: false
+      - key: PABAU_COMPANY_ID
+        sync: false
+      - key: MAILCHIMP_API_KEY
+        sync: false
+      - key: MAILCHIMP_API_URL
+        sync: false
+      - key: MAILCHIMP_LIST_ID
+        sync: false

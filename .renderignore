@@ -1,0 +1,75 @@
+# Render Ignore - Files NOT to deploy to production
+
+# Analysis and documentation text files
+*.txt
+!requirements.txt
+!runtime.txt
+
+# Markdown documentation (except key deployment docs)
+*.md
+!README.md
+
+# Test scripts
+scripts/test_*.py
+scripts/analyze_*.py
+scripts/explore_*.py
+scripts/understand_*.py
+scripts/try_*.py
+scripts/verify_*.py
+scripts/discover_*.py
+scripts/appointment_statistics.py
+scripts/fast_count.py
+scripts/get_full_statistics.py
+scripts/quick_totals.py
+scripts/run_reconciliation.py
+
+# One-time setup scripts
+scripts/create_render_db.py
+scripts/setup_appointments_table.py
+scripts/migrate_leads_opt_in_field.sql
+
+# Unused services (not needed for cron-based sync)
+tasks/
+services/
+tests/
+
+# Database files (schema will be applied manually)
+database.py
+DATABASE_SCHEMA_APPOINTMENTS.sql
+
+# Old/unused files
+api/webhooks.py
+main.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/
+*.tmp
+*.psv
+

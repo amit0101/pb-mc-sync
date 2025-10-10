@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pabau-Mailchimp Sync Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f7fa;
+            color: #2c3e50;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #2c3e50; margin-bottom: 10px; font-size: 28px; }
+        .subtitle { color: #7f8c8d; margin-bottom: 30px; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #3498db;
+        }
+        .stat-card.clients { border-left-color: #3498db; }
+        .stat-card.leads { border-left-color: #9b59b6; }
+        .stat-title { font-size: 14px; color: #7f8c8d; margin-bottom: 8px; font-weight: 500; }
+        .stat-value { font-size: 32px; font-weight: 700; color: #2c3e50; }
+        .stat-detail { font-size: 13px; color: #95a5a6; margin-top: 8px; }
+        
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .log-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #5a6c7d;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .log-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f3f5;
+        }
+        .log-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-error { background: #f8d7da; color: #721c24; }
+        .badge-skipped { background: #fff3cd; color: #856404; }
+        .badge-client { background: #cce5ff; color: #004085; }
+        .badge-lead { background: #e7d4f7; color: #4a148c; }
+        
+        .refresh-info {
+            text-align: center;
+            padding: 12px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #2e7d32;
+            font-size: 14px;
+        }
+        
+        .email-col { 
+            max-width: 200px; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .action-col {
+            font-family: monospace;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .time-col {
+            color: #6c757d;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Pabau ↔ Mailchimp Sync Dashboard</h1>
+        <p class="subtitle">Real-time sync status and logs | Last updated: {{ current_time.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        
+        <div class="refresh-info">
+            ✅ Auto-refresh every 30 seconds | Sync runs every 30 minutes
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            {% for row in summary %}
+            <div class="stat-card {% if row['category'] == 'Clients' %}clients{% else %}leads{% endif %}">
+                <div class="stat-title">{{ row['category'] }}</div>
+                <div class="stat-value">{{ row['total'] }}</div>
+                <div class="stat-detail">
+                    ✉️ {{ row['opted_in_email'] }} opted in | 
+                    📬 {{ row['in_mailchimp'] }} in Mailchimp | 
+                    🔄 {{ row['needs_sync'] }} need sync
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Recent Logs -->
+        <div class="section">
+            <div class="section-title">📝 Recent Sync Operations (Last 100)</div>
+            <div style="overflow-x: auto;">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Email</th>
+                            <th>Action</th>
+                            <th>Status</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in recent_logs %}
+                        <tr>
+                            <td class="time-col">{{ log['created_at'].strftime('%H:%M:%S') if log['created_at'] else '-' }}</td>
+                            <td>
+                                {% if log['entity_type'] %}
+                                <span class="badge badge-{{ log['entity_type'] }}">{{ log['entity_type'] }}</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td class="email-col" title="{{ log['email'] }}">{{ log['email'] or '-' }}</td>
+                            <td class="action-col">{{ log['action'] or '-' }}</td>
+                            <td>
+                                {% if log['status'] == 'success' %}
+                                <span class="badge badge-success">✓ {{ log['status'] }}</span>
+                                {% elif log['status'] == 'error' %}
+                                <span class="badge badge-error">✗ {{ log['status'] }}</span>
+                                {% else %}
+                                <span class="badge badge-skipped">⊘ {{ log['status'] }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ log['message'] or log['error_details'] or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div style="text-align: center; padding: 20px; color: #95a5a6; font-size: 13px;">
+            Pabau-Mailchimp Sync Service | Powered by FastAPI + PostgreSQL
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>
+
