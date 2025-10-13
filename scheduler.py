@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from scripts.sync.sync_pabau_to_db import sync_pabau
-from scripts.sync.fetch_mailchimp_unsubscribes import sync_mailchimp_unsubscribes
+from scripts.sync.fetch_mailchimp_unsubscribes import fetch_unsubscribes
 from scripts.sync.sync_db_to_mailchimp import sync_to_mailchimp
 
 
@@ -33,7 +33,7 @@ async def run_full_sync():
         
         # Step 2: Fetch Mailchimp unsubscribes
         logger.info("Step 2: Fetching Mailchimp unsubscribes...")
-        await sync_mailchimp_unsubscribes()
+        await fetch_unsubscribes()
         
         # Step 3: Sync Database to Mailchimp
         logger.info("Step 3: Syncing Database to Mailchimp...")
