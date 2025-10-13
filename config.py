@@ -21,21 +21,12 @@ class Settings(BaseSettings):
     # Database Configuration
     database_url: str = Field(..., env="DATABASE_URL")
     
-    # Redis Configuration
-    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
-    
     # Application Settings
-    app_env: str = Field(default="development", env="APP_ENV")
+    app_env: str = Field(default="production", env="APP_ENV")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
-    webhook_secret: str = Field(..., env="WEBHOOK_SECRET")
     
     # Sync Settings
     sync_batch_size: int = Field(default=50, env="SYNC_BATCH_SIZE")  # Pabau API limit is 50 per page
-    sync_interval_seconds: int = Field(default=300, env="SYNC_INTERVAL_SECONDS")
-    reconciliation_hour: int = Field(default=2, env="RECONCILIATION_HOUR")
-    
-    # Monitoring
-    sentry_dsn: str = Field(default="", env="SENTRY_DSN")
     
     @property
     def mailchimp_api_url(self) -> str:
