@@ -41,6 +41,13 @@ wheels/
 # Logs
 *.log
 logs/
+/tmp/
+
+# Data files
+data/
+exports/
+*.psv
+*.csv
 
 # Testing
 .pytest_cache/

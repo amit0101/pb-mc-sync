@@ -30,9 +30,8 @@ async def fetch_unsubscribes():
     mailchimp = MailchimpClient()
     
     try:
-        # Fetch unsubscribed members
-        unsubscribed = await mailchimp.get_list_members(status="unsubscribed", count=1000)
-        members = unsubscribed.get('members', [])
+        # Fetch all unsubscribed members
+        members = await mailchimp.get_all_members(status="unsubscribed")
         
         print(f"  Found {len(members)} unsubscribed members in Mailchimp")
         

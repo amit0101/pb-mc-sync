@@ -31,29 +31,60 @@ async def sync_to_mailchimp():
     mc = MailchimpClient()
     
     try:
-        # Get last Mailchimp sync time from sync_logs
+        # Check when Pabau sync last completed
         with db.get_cursor() as cursor:
             cursor.execute("""
-                SELECT MAX(created_at) as last_sync
+                SELECT MAX(created_at) as last_run
                 FROM sync_logs
-                WHERE action = 'sync_to_mailchimp'
+                WHERE action IN ('sync_pabau_clients_completed', 'sync_pabau_leads_completed')
                   AND status = 'success'
             """)
             result = cursor.fetchone()
-            last_sync = result['last_sync'] if result and result['last_sync'] else None
+            last_pabau_sync = result['last_run'] if result and result['last_run'] else None
         
-        if last_sync:
-            print(f"  Last Mailchimp sync: {last_sync}")
-            print(f"  Syncing records updated after: {last_sync}")
-            cutoff_time = last_sync
-        else:
-            print(f"  First Mailchimp sync - syncing all opted-in records")
-            # Use a very old date to get everything
-            cutoff_time = datetime(2020, 1, 1)
+        if not last_pabau_sync:
+            print(f"  No Pabau sync completion found - nothing to upload")
+            return
+        
+        # Check when Mailchimp upload last completed
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT MAX(created_at) as last_upload
+                FROM sync_logs
+                WHERE action = 'sync_to_mailchimp_completed'
+                  AND status = 'success'
+            """)
+            result = cursor.fetchone()
+            last_mailchimp_upload = result['last_upload'] if result and result['last_upload'] else datetime(2020, 1, 1)
+        
+        print(f"  Last Pabau sync completed: {last_pabau_sync}")
+        print(f"  Last Mailchimp upload completed: {last_mailchimp_upload}")
+        
+        # Only upload if Pabau sync happened AFTER last Mailchimp upload
+        if last_pabau_sync <= last_mailchimp_upload:
+            print(f"  ✅ No new Pabau data since last Mailchimp upload")
+            return
+        
+        print(f"  Uploading clients/leads synced after {last_mailchimp_upload}")
+        
+        # Find clients that were successfully synced from Pabau since last Mailchimp upload
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT sl.email) as count
+                FROM sync_logs sl
+                INNER JOIN clients c ON c.email = sl.email
+                WHERE sl.action = 'sync_pabau_client'
+                  AND sl.status = 'success'
+                  AND sl.created_at > %s
+                  AND c.opt_in_email = 1
+                  AND c.is_active = 1
+            """, (last_mailchimp_upload,))
+            debug = cursor.fetchone()
+            print(f"  Clients to upload: {debug['count']}")
         
         with db.get_cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT DISTINCT ON (c.id)
                     c.id as client_db_id,
                     c.pabau_id as client_system_id,
                     c.first_name,
@@ -72,7 +103,8 @@ async def sync_to_mailchimp():
                     a.appt_with,
                     a.created_by,
                     a.created_date
-                FROM clients c
+                FROM sync_logs sl
+                INNER JOIN clients c ON c.email = sl.email
                 LEFT JOIN LATERAL (
                     SELECT *
                     FROM appointments
@@ -80,12 +112,14 @@ async def sync_to_mailchimp():
                     ORDER BY appointment_datetime DESC NULLS LAST
                     LIMIT 1
                 ) a ON true
-                WHERE c.opt_in_email = 1
+                WHERE sl.action = 'sync_pabau_client'
+                  AND sl.status = 'success'
+                  AND sl.created_at > %s
+                  AND c.opt_in_email = 1
                   AND c.email IS NOT NULL
                   AND c.is_active = 1
-                  AND c.updated_at >= %s
                 ORDER BY c.id
-            """, (cutoff_time,))
+            """, (last_mailchimp_upload,))
             clients = cursor.fetchall()
         
         if not clients:
@@ -233,6 +267,17 @@ async def sync_to_mailchimp():
                     )
                 except Exception as log_error:
                     print(f"  ⚠️  Failed to log sync for {client['email']}: {log_error}")
+        
+        # Log completion (even if 0 uploads)
+        db.log_sync(
+            entity_type='sync_run',
+            entity_id=None,
+            pabau_id=None,
+            email=None,
+            action='sync_to_mailchimp_completed',
+            status='success',
+            message=f'Uploaded {success_count} clients/leads to Mailchimp'
+        )
         
     except Exception as e:
         print(f"  ❌ Error: {e}")

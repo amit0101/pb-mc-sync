@@ -20,6 +20,12 @@ os.makedirs(templates_dir, exist_ok=True)
 templates = Jinja2Templates(directory=templates_dir)
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render"""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard page"""
