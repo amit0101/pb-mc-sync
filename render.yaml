@@ -27,40 +27,16 @@ services:
           property: connectionString
       - key: PYTHON_VERSION
         value: "3.11"
-  # FAST SYNC: Mailchimp <-> Database (every 30 minutes)
+  # UNIFIED SYNC: Runs all 3 sync operations sequentially (every 3 hours)
+  # Order: Pabau→DB → Mailchimp Unsubscribes→DB → DB→Mailchimp
   - type: cron
-    name: mailchimp-sync-fast
+    name: unified-sync
     runtime: python
     region: oregon
-    schedule: "*/30 * * * *"  # Every 30 minutes
+    schedule: "0 */3 * * *"  # Every 3 hours (at :00)
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python -c 'import asyncio; from scripts.sync.fetch_mailchimp_unsubscribes import fetch_unsubscribes; from scripts.sync.sync_db_to_mailchimp import sync_to_mailchimp; asyncio.run(fetch_unsubscribes()); asyncio.run(sync_to_mailchimp())'"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pabau-mailchimp-db
-          property: connectionString
-      - key: PABAU_API_KEY
-        sync: false
-      - key: PABAU_API_URL
-        sync: false
-      - key: PABAU_COMPANY_ID
-        sync: false
-      - key: MAILCHIMP_API_KEY
-        sync: false
-      - key: MAILCHIMP_API_URL
-        sync: false
-      - key: MAILCHIMP_LIST_ID
-        sync: false
-
-  # SLOW SYNC: Pabau -> Database (every 4 hours)
-  - type: cron
-    name: pabau-sync-slow
-    runtime: python
-    region: oregon
-    schedule: "0 */4 * * *"  # Every 4 hours (at :00)
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python scripts/sync/sync_pabau_to_db.py"
+    startCommand: "python scripts/sync/sync_all.py"
+    preDeployCommand: "python scripts/sync/sync_all.py"  # Run initial sync on deployment
     envVars:
       - key: DATABASE_URL
         fromDatabase:

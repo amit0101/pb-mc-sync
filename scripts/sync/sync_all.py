@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-MASTER SYNC SCRIPT - Run every 30 minutes
+MASTER SYNC SCRIPT - Run every 3 hours
 Executes all sync operations in correct order
 
 Order of operations:
-1. Fetch Mailchimp unsubscribes → Update database
-2. Fetch Pabau updates → Update database
+1. Fetch Pabau updates → Update database (clients, leads, appointments)
+2. Fetch Mailchimp unsubscribes → Update database
 3. Push database opted-in contacts → Mailchimp
 
 This ensures:
-- Mailchimp unsubscribes are captured first
-- Pabau updates overwrite if needed (Pabau is source of truth for opt-ins)
+- Pabau is synced first (source of truth for contact data and opt-ins)
+- Mailchimp unsubscribes are applied after
 - Final state is pushed to Mailchimp
 """
 
@@ -45,18 +45,18 @@ async def run_sync_cycle():
     print("")
     
     try:
-        # STEP 1: Fetch Mailchimp unsubscribes
-        print("STEP 1/3: Fetching Mailchimp unsubscribes...")
-        print("-" * 80)
-        mc_module = load_sync_module('fetch_mailchimp_unsubscribes.py')
-        await mc_module.fetch_unsubscribes()
-        print("")
-        
-        # STEP 2: Sync Pabau to Database
-        print("STEP 2/3: Syncing Pabau to database...")
+        # STEP 1: Sync Pabau to Database
+        print("STEP 1/3: Syncing Pabau to database...")
         print("-" * 80)
         pabau_module = load_sync_module('sync_pabau_to_db.py')
         await pabau_module.sync_pabau()
+        print("")
+        
+        # STEP 2: Fetch Mailchimp unsubscribes
+        print("STEP 2/3: Fetching Mailchimp unsubscribes...")
+        print("-" * 80)
+        mc_module = load_sync_module('fetch_mailchimp_unsubscribes.py')
+        await mc_module.fetch_unsubscribes()
         print("")
         
         # STEP 3: Sync Database to Mailchimp
