@@ -33,7 +33,7 @@ services:
     name: unified-sync
     runtime: python
     region: oregon
-    schedule: "0 */3 * * *"  # Every 3 hours (at :00)
+    schedule: "10 */3 * * *"  # Every 3 hours (at :10)
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python scripts/sync/sync_all.py"
     envVars:
