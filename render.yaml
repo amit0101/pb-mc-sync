@@ -21,7 +21,7 @@ services:
     plan: free
     healthCheckPath: /health
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn dashboard:app --host 0.0.0.0 --port $PORT"
+    startCommand: "python main.py"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
