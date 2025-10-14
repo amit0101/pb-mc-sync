@@ -121,6 +121,7 @@ def transform_appointment_for_db(appointment_data: dict, client_pabau_id: int) -
     
     return {
         'client_pabau_id': client_pabau_id,
+        'pabau_appointment_id': appointment_data.get('id'),  # Appointment ID from API
         'appointment_date': appointment_date,
         'appointment_time': appointment_time,
         'appointment_datetime': appointment_datetime,
