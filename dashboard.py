@@ -9,10 +9,24 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import os
+import threading
 from db.database import get_db
 from datetime import datetime
 
 app = FastAPI(title="Pabau-Mailchimp Sync Dashboard")
+
+# Start background scheduler in a separate thread
+def start_background_scheduler():
+    """Start the scheduler in a background thread"""
+    from scheduler import start_scheduler
+    start_scheduler()
+
+# Start scheduler on app startup
+@app.on_event("startup")
+async def startup_event():
+    """Start background scheduler when app starts"""
+    scheduler_thread = threading.Thread(target=start_background_scheduler, daemon=True)
+    scheduler_thread.start()
 
 # Templates
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")

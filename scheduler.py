@@ -28,15 +28,15 @@ async def run_full_sync():
         logger.info("=" * 80)
         
         # Step 1: Sync Pabau to Database
-        logger.info("Step 1: Syncing Pabau to Database...")
+        logger.info("Step 1/3: Syncing Pabau to Database...")
         await sync_pabau()
         
         # Step 2: Fetch Mailchimp unsubscribes
-        logger.info("Step 2: Fetching Mailchimp unsubscribes...")
+        logger.info("Step 2/3: Fetching Mailchimp unsubscribes...")
         await fetch_unsubscribes()
         
         # Step 3: Sync Database to Mailchimp
-        logger.info("Step 3: Syncing Database to Mailchimp...")
+        logger.info("Step 3/3: Syncing Database to Mailchimp...")
         await sync_to_mailchimp()
         
         logger.info("=" * 80)
@@ -57,20 +57,26 @@ def job():
 def start_scheduler():
     """Start the background scheduler"""
     logger.info("Starting background scheduler...")
-    logger.info("Sync will run every 3 hours")
+    logger.info("Sync will run at :20 past every 3rd hour (00:20, 03:20, 06:20, 09:20, 12:20, 15:20, 18:20, 21:20)")
     
-    # Schedule sync every 3 hours
-    schedule.every(3).hours.do(job)
+    # Schedule sync at :20 past specific hours (every 3 hours)
+    schedule.every().day.at("00:20").do(job)
+    schedule.every().day.at("03:20").do(job)
+    schedule.every().day.at("06:20").do(job)
+    schedule.every().day.at("09:20").do(job)
+    schedule.every().day.at("12:20").do(job)
+    schedule.every().day.at("15:20").do(job)
+    schedule.every().day.at("18:20").do(job)
+    schedule.every().day.at("21:20").do(job)
     
     # Skip initial sync on startup to avoid memory issues on Render free tier
-    # First sync will run in 3 hours
     # To trigger manual sync immediately: set env var RUN_INITIAL_SYNC=true
     import os
     if os.getenv('RUN_INITIAL_SYNC', 'false').lower() == 'true':
         logger.info("Running initial sync...")
         job()
     else:
-        logger.info("Skipping initial sync. First sync will run in 3 hours.")
+        logger.info("Skipping initial sync. Next sync will run at the next scheduled time.")
         logger.info("To enable initial sync, set RUN_INITIAL_SYNC=true")
     
     # Keep running
