@@ -62,9 +62,16 @@ def start_scheduler():
     # Schedule sync every 3 hours
     schedule.every(3).hours.do(job)
     
-    # Run once immediately on startup
-    logger.info("Running initial sync...")
-    job()
+    # Skip initial sync on startup to avoid memory issues on Render free tier
+    # First sync will run in 3 hours
+    # To trigger manual sync immediately: set env var RUN_INITIAL_SYNC=true
+    import os
+    if os.getenv('RUN_INITIAL_SYNC', 'false').lower() == 'true':
+        logger.info("Running initial sync...")
+        job()
+    else:
+        logger.info("Skipping initial sync. First sync will run in 3 hours.")
+        logger.info("To enable initial sync, set RUN_INITIAL_SYNC=true")
     
     # Keep running
     while True:

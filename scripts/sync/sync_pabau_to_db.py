@@ -20,6 +20,7 @@ Strategy:
 import sys
 import os
 import asyncio
+import gc
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
@@ -79,11 +80,13 @@ async def sync_pabau_clients():
             
             total_fetched += len(clients_on_page)
             
-            # Progress update every 50 pages
+            # Progress update and memory cleanup every 50 pages
             if page % 50 == 0:
                 elapsed = (datetime.now() - start_time).total_seconds() / 60
                 print(f"  Page {page}: Fetched {total_fetched} clients so far ({elapsed:.1f} min, "
                       f"{clients_updated} new, {skipped_old} old, {skipped_no_email} no email)")
+                # Force garbage collection to prevent memory buildup
+                gc.collect()
             
             # Process clients on this page
             for client_raw in clients_on_page:
@@ -236,11 +239,13 @@ async def sync_pabau_leads():
             
             total_fetched += len(leads_on_page)
             
-            # Progress update every 50 pages
+            # Progress update and memory cleanup every 50 pages
             if page % 50 == 0:
                 elapsed = (datetime.now() - start_time).total_seconds() / 60
                 print(f"  Page {page}: Fetched {total_fetched} leads so far ({elapsed:.1f} min, "
                       f"{updated_count} new, {skipped_old} old, {skipped_no_email} no email)")
+                # Force garbage collection to prevent memory buildup
+                gc.collect()
             
             # Process leads on this page
             for lead_raw in leads_on_page:
