@@ -22,29 +22,46 @@ from scripts.sync.sync_db_to_mailchimp import sync_to_mailchimp
 
 async def run_full_sync():
     """Run the complete sync cycle"""
+    start_time = datetime.now()
     try:
         logger.info("=" * 80)
-        logger.info(f"Starting sync cycle at {datetime.now()}")
+        logger.info(f"Starting sync cycle at {start_time}")
         logger.info("=" * 80)
         
-        # Step 1: Sync Pabau to Database
+        # Step 1: Sync Pabau to Database (HEAVY - ~30 min)
         logger.info("Step 1/3: Syncing Pabau to Database...")
-        await sync_pabau()
+        logger.info("Note: This step processes ~28K clients and takes ~30 minutes")
+        try:
+            await sync_pabau()
+            logger.info("✅ Pabau sync completed")
+        except Exception as e:
+            logger.error(f"❌ Pabau sync failed: {e}")
+            # Continue with other syncs even if Pabau fails
         
-        # Step 2: Fetch Mailchimp unsubscribes
+        # Step 2: Fetch Mailchimp unsubscribes (FAST - ~1 min)
         logger.info("Step 2/3: Fetching Mailchimp unsubscribes...")
-        await fetch_unsubscribes()
+        try:
+            await fetch_unsubscribes()
+            logger.info("✅ Mailchimp unsubscribes sync completed")
+        except Exception as e:
+            logger.error(f"❌ Mailchimp unsubscribes sync failed: {e}")
         
-        # Step 3: Sync Database to Mailchimp
+        # Step 3: Sync Database to Mailchimp (FAST - ~5 min)
         logger.info("Step 3/3: Syncing Database to Mailchimp...")
-        await sync_to_mailchimp()
+        try:
+            await sync_to_mailchimp()
+            logger.info("✅ Database to Mailchimp sync completed")
+        except Exception as e:
+            logger.error(f"❌ Database to Mailchimp sync failed: {e}")
         
+        elapsed = (datetime.now() - start_time).total_seconds() / 60
         logger.info("=" * 80)
         logger.info(f"Sync cycle completed at {datetime.now()}")
+        logger.info(f"Total duration: {elapsed:.1f} minutes")
         logger.info("=" * 80)
         
     except Exception as e:
-        logger.error(f"Error in sync cycle: {e}")
+        logger.error(f"Fatal error in sync cycle: {e}")
         import traceback
         traceback.print_exc()
 

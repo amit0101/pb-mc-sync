@@ -60,6 +60,7 @@ async def sync_pabau_clients():
         
         # Fetch ALL pages from Pabau (no filtering works in API)
         print(f"  Fetching all clients from Pabau API...")
+        print(f"  Note: This processes ~28K clients and takes ~30 minutes")
         
         clients_updated = 0
         appointments_updated = 0
@@ -80,13 +81,15 @@ async def sync_pabau_clients():
             
             total_fetched += len(clients_on_page)
             
-            # Progress update and memory cleanup every 50 pages
-            if page % 50 == 0:
+            # Progress update and memory cleanup more frequently
+            if page % 20 == 0:
                 elapsed = (datetime.now() - start_time).total_seconds() / 60
                 print(f"  Page {page}: Fetched {total_fetched} clients so far ({elapsed:.1f} min, "
                       f"{clients_updated} new, {skipped_old} old, {skipped_no_email} no email)")
                 # Force garbage collection to prevent memory buildup
                 gc.collect()
+                # Add a tiny sleep to let other threads breathe
+                await asyncio.sleep(0.1)
             
             # Process clients on this page
             for client_raw in clients_on_page:
