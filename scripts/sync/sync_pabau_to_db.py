@@ -37,11 +37,11 @@ from utils.transforms import (
 async def sync_pabau_clients():
     """Fetch ALL clients from Pabau and sync new ones to database
     
-    Strategy: Fetch all pages, filter by created_date in application
+    Strategy: Fetch all pages in batches with delays between batches
     """
     
-    start_time = datetime.now()
-    print(f"[{start_time}] Syncing Pabau clients...")
+    overall_start_time = datetime.now()
+    print(f"[{overall_start_time}] Syncing Pabau clients...")
     
     db = get_db()
     pabau = PabauClient()
@@ -58,27 +58,28 @@ async def sync_pabau_clients():
             cutoff_date = None
             print(f"  First sync - will process all clients")
         
-        # Fetch pages from Pabau in chunks to avoid timeout on free tier
-        # Free tier limit: ~15 minutes before Render kills the process
-        MAX_PAGES_PER_RUN = 300  # Process 300 pages (15K clients) per run = ~12 minutes
-        print(f"  Fetching clients from Pabau API (max {MAX_PAGES_PER_RUN} pages per run)...")
-        print(f"  Note: Full sync takes multiple runs on free tier")
+        # Process in batches with delays
+        PAGES_PER_BATCH = 300  # Process 300 pages per batch (~12 minutes)
+        DELAY_BETWEEN_BATCHES = 5 * 60  # 5 minutes in seconds
+        print(f"  Processing {PAGES_PER_BATCH} pages per batch with {DELAY_BETWEEN_BATCHES//60} minute delays")
         
-        # Get last page processed (for resumable sync)
-        last_page_processed = db.get_last_pabau_page_processed()
-        start_page = last_page_processed + 1 if last_page_processed else 1
+        page = 1
+        batch_number = 1
+        total_clients_updated = 0
+        total_appointments_updated = 0
+        total_pages_processed = 0
         
-        if start_page > 1:
-            print(f"  Resuming from page {start_page} (previous run processed {last_page_processed} pages)")
-        
-        clients_updated = 0
-        appointments_updated = 0
-        skipped_old = 0
-        skipped_no_email = 0
-        sync_time = datetime.now()
-        page = start_page
-        total_fetched = 0
-        pages_processed_this_run = 0
+        while True:
+            print(f"\n  🔄 BATCH {batch_number}: Processing pages {page} to {page + PAGES_PER_BATCH - 1}")
+            batch_start_time = datetime.now()
+            
+            clients_updated = 0
+            appointments_updated = 0
+            skipped_old = 0
+            skipped_no_email = 0
+            sync_time = datetime.now()
+            total_fetched = 0
+            pages_processed_this_batch = 0
         
         while True:
             # Fetch one page at a time
@@ -92,20 +93,11 @@ async def sync_pabau_clients():
                 break
             
             total_fetched += len(clients_on_page)
-            pages_processed_this_run += 1
-            
-            # Check if we've hit the page limit for this run
-            if pages_processed_this_run >= MAX_PAGES_PER_RUN:
-                print(f"\n  ⏸️  Reached page limit ({MAX_PAGES_PER_RUN} pages) for this run")
-                print(f"     Processed pages {start_page}-{page}")
-                print(f"     Next run will continue from page {page + 1}")
-                # Save progress
-                db.save_pabau_page_progress(page)
-                break
+            pages_processed_this_batch += 1
             
             # Progress update and memory cleanup more frequently
             if page % 20 == 0:
-                elapsed = (datetime.now() - start_time).total_seconds() / 60
+                elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
                 print(f"  Page {page}: Fetched {total_fetched} clients so far ({elapsed:.1f} min, "
                       f"{clients_updated} new, {skipped_old} old, {skipped_no_email} no email)")
                 # Force garbage collection to prevent memory buildup
@@ -188,17 +180,42 @@ async def sync_pabau_clients():
                         error_details=str(e)
                     )
             
+            # Check if batch is complete
+            if pages_processed_this_batch >= PAGES_PER_BATCH:
+                batch_elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
+                print(f"\n  ✅ Batch {batch_number} complete!")
+                print(f"     Pages: {pages_processed_this_batch}")
+                print(f"     Clients updated: {clients_updated}")
+                print(f"     Appointments: {appointments_updated}")
+                print(f"     Time: {batch_elapsed:.1f} minutes")
+                
+                total_clients_updated += clients_updated
+                total_appointments_updated += appointments_updated
+                total_pages_processed += pages_processed_this_batch
+                
+                # Move to next page for next batch
+                page += 1
+                batch_number += 1
+                
+                # Delay before next batch
+                print(f"\n  ⏳ Waiting {DELAY_BETWEEN_BATCHES//60} minutes before next batch...")
+                await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+                
+                # Continue with next batch (break inner loop, continue outer loop)
+                break
+            
             # Move to next page
             page += 1
         
-        elapsed_total = (datetime.now() - start_time).total_seconds() / 60
+        # This print statement is now at the end after all batches
+        elapsed_total = (datetime.now() - overall_start_time).total_seconds() / 60
         print()
-        print(f"  ✅ Completed in {elapsed_total:.1f} minutes")
-        print(f"  📊 Total fetched: {total_fetched} clients")
-        print(f"  ✅ New clients synced: {clients_updated}")
-        print(f"  ✅ Appointments synced: {appointments_updated}")
-        print(f"  ⏭️  Skipped (old): {skipped_old}")
-        print(f"  ⏭️  Skipped (no email): {skipped_no_email}")
+        print(f"  🎉 ALL BATCHES COMPLETED!")
+        print(f"  📊 Total batches: {batch_number}")
+        print(f"  📊 Total pages: {total_pages_processed}")
+        print(f"  ✅ Total clients synced: {total_clients_updated}")
+        print(f"  ✅ Total appointments synced: {total_appointments_updated}")
+        print(f"  ⏱️  Total time: {elapsed_total:.1f} minutes")
         
         # Log sync completion (even if 0 new records)
         db.log_sync(
