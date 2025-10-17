@@ -455,8 +455,48 @@ class Database:
             return result['last_sync'] if result else None
 
 
+    # ==========================
+    # SYNC PROGRESS TRACKING
+    # ==========================
+    
+    def save_pabau_page_progress(self, page_number: int):
+        """Save the last page processed for resumable syncs"""
+        with self.get_cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_progress (
+                    key TEXT PRIMARY KEY,
+                    value INTEGER,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO sync_progress (key, value, updated_at)
+                VALUES ('last_pabau_page', %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    updated_at = EXCLUDED.updated_at
+            """, (page_number,))
+    
+    def get_last_pabau_page_processed(self) -> int:
+        """Get the last page number processed"""
+        with self.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT value FROM sync_progress WHERE key = 'last_pabau_page'
+            """)
+            result = cursor.fetchone()
+            return result['value'] if result else 0
+    
+    def reset_pabau_page_progress(self):
+        """Reset progress (call when sync completes all pages)"""
+        with self.get_cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM sync_progress WHERE key = 'last_pabau_page'
+            """)
+
+
 # Singleton instance
 _db = None
+
 
 def get_db() -> Database:
     """Get database singleton instance"""

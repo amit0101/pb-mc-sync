@@ -42,4 +42,4 @@ services:
       - key: MAILCHIMP_LIST_ID
         sync: false
       - key: RUN_INITIAL_SYNC
-        value: "false"  # Set to "true" to run sync immediately on startup
+        value: "false"  # KEEP FALSE - initial sync on startup crashes on free tier

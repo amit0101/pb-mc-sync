@@ -58,17 +58,27 @@ async def sync_pabau_clients():
             cutoff_date = None
             print(f"  First sync - will process all clients")
         
-        # Fetch ALL pages from Pabau (no filtering works in API)
-        print(f"  Fetching all clients from Pabau API...")
-        print(f"  Note: This processes ~28K clients and takes ~30 minutes")
+        # Fetch pages from Pabau in chunks to avoid timeout on free tier
+        # Free tier limit: ~15 minutes before Render kills the process
+        MAX_PAGES_PER_RUN = 300  # Process 300 pages (15K clients) per run = ~12 minutes
+        print(f"  Fetching clients from Pabau API (max {MAX_PAGES_PER_RUN} pages per run)...")
+        print(f"  Note: Full sync takes multiple runs on free tier")
+        
+        # Get last page processed (for resumable sync)
+        last_page_processed = db.get_last_pabau_page_processed()
+        start_page = last_page_processed + 1 if last_page_processed else 1
+        
+        if start_page > 1:
+            print(f"  Resuming from page {start_page} (previous run processed {last_page_processed} pages)")
         
         clients_updated = 0
         appointments_updated = 0
         skipped_old = 0
         skipped_no_email = 0
         sync_time = datetime.now()
-        page = 1
+        page = start_page
         total_fetched = 0
+        pages_processed_this_run = 0
         
         while True:
             # Fetch one page at a time
@@ -76,10 +86,22 @@ async def sync_pabau_clients():
             clients_on_page = response.get("clients", [])
             
             if not clients_on_page:
-                print(f"  Page {page}: Empty - stopping")
+                print(f"  Page {page}: Empty - reached end of data")
+                # Reset page counter since we've finished
+                db.reset_pabau_page_progress()
                 break
             
             total_fetched += len(clients_on_page)
+            pages_processed_this_run += 1
+            
+            # Check if we've hit the page limit for this run
+            if pages_processed_this_run >= MAX_PAGES_PER_RUN:
+                print(f"\n  ⏸️  Reached page limit ({MAX_PAGES_PER_RUN} pages) for this run")
+                print(f"     Processed pages {start_page}-{page}")
+                print(f"     Next run will continue from page {page + 1}")
+                # Save progress
+                db.save_pabau_page_progress(page)
+                break
             
             # Progress update and memory cleanup more frequently
             if page % 20 == 0:
