@@ -101,7 +101,7 @@ async def sync_to_mailchimp():
                     a.duration,
                     a.appointment_status,
                     a.appt_with,
-                    a.created_by,
+                    c.location as client_location,
                     a.created_date
                 FROM sync_logs sl
                 INNER JOIN clients c ON c.email = sl.email
@@ -168,8 +168,8 @@ async def sync_to_mailchimp():
             
             if client['appt_with']:
                 merge_fields['MMERGE10'] = str(client['appt_with'])[:50]
-            if client['created_by']:
-                merge_fields['MMERGE11'] = str(client['created_by'])[:50]
+            if client['client_location']:
+                merge_fields['MMERGE11'] = str(client['client_location'])[:50]
             
             try:
                 if client['created_date']:

@@ -31,13 +31,19 @@ from clients.mailchimp_client import MailchimpClient
 from db.database import get_db
 
 
-async def bulk_upload_clients():
-    """Bulk upload all opted-in clients to Mailchimp"""
+async def bulk_upload_clients(skip_records=0):
+    """Bulk upload all opted-in clients to Mailchimp
+    
+    Args:
+        skip_records: Number of records to skip (default: 0)
+    """
     
     print("=" * 80)
     print("BULK UPLOAD CLIENTS TO MAILCHIMP")
     print("=" * 80)
     print(f"Started at: {datetime.now()}")
+    if skip_records > 0:
+        print(f"⏭️  Skipping first {skip_records:,} records")
     print("")
     
     db = get_db()
@@ -70,7 +76,7 @@ async def bulk_upload_clients():
                     a.duration,
                     a.appointment_status,
                     a.appt_with,
-                    a.created_by,
+                    c.location as client_location,
                     a.created_date,
                     a.cancellation_reason
                 FROM clients c
@@ -85,14 +91,15 @@ async def bulk_upload_clients():
                   AND c.email IS NOT NULL
                   AND c.is_active = 1
                 ORDER BY c.id
-            """)
+                OFFSET %s
+            """, (skip_records,))
             clients = cursor.fetchall()
         
         if not clients:
             print("⚠️  No opted-in clients found!")
             return
         
-        print(f"✅ Found {len(clients)} clients from database")
+        print(f"✅ Found {len(clients)} clients from database (after skipping {skip_records:,})")
         print("")
         
         # Deduplicate by email (keep LATEST client record - highest client ID)
@@ -145,7 +152,8 @@ async def bulk_upload_clients():
                 merge_fields['PHONE'] = client['phone']
             if client['client_mobile']:
                 merge_fields['MMERGE7'] = client['client_mobile']
-            if client['gender']:
+            # Gender - only send if it's a valid value (not "N/A", "None", empty, etc.)
+            if client['gender'] and client['gender'] not in ['N/A', 'None', '', 'null']:
                 merge_fields['MMERGE6'] = client['gender']
             
             # Phone opt in
@@ -162,8 +170,8 @@ async def bulk_upload_clients():
             
             if client['appt_with']:
                 merge_fields['MMERGE10'] = str(client['appt_with'])[:50]  # Limit length
-            if client['created_by']:
-                merge_fields['MMERGE11'] = str(client['created_by'])[:50]
+            if client['client_location']:
+                merge_fields['MMERGE11'] = str(client['client_location'])[:50]
             
             try:
                 if client['created_date']:
@@ -207,6 +215,11 @@ async def bulk_upload_clients():
                 # This is a critical field - skip this entire client if invalid
                 continue
             
+            # Skip obviously fake/test emails
+            email_lower = client['email'].lower()
+            if any(skip_word in email_lower for skip_word in ['test@', 'fake@', 'invalid@', 'example@']):
+                continue
+            
             members_batch.append({
                 'email_address': client['email'],
                 'status': 'subscribed',
@@ -245,16 +258,45 @@ async def bulk_upload_clients():
                 
                 print(f"  Batch {batch_index}: ✅ {batch_success} success, ❌ {batch_errors} errors")
                 
-                # Show errors if any
+                # Categorize and show errors if any
                 if batch_errors > 0 and 'errors' in result:
-                    for err in result['errors'][:5]:  # Show first 5 errors with details
+                    compliance_errors = []
+                    invalid_emails = []
+                    merge_field_errors = []
+                    duplicate_errors = []
+                    other_errors = []
+                    
+                    for err in result['errors']:
                         email = err.get('email_address', 'N/A')
-                        error_msg = err.get('error', 'Unknown error')
-                        field_errors = err.get('field_errors', {})
-                        print(f"    ⚠️  {email}: {error_msg}")
-                        if field_errors:
-                            for field, field_error in field_errors.items():
-                                print(f"        Field '{field}': {field_error}")
+                        error_msg = err.get('error', 'Unknown error').lower()
+                        
+                        if 'compliance' in error_msg or 'unsubscribe' in error_msg or 'bounce' in error_msg:
+                            compliance_errors.append(email)
+                        elif 'fake' in error_msg or 'invalid' in error_msg:
+                            invalid_emails.append(email)
+                        elif 'merge field' in error_msg:
+                            merge_field_errors.append((email, err.get('error')))
+                        elif 'duplicate entry' in error_msg or 'sqlstate[23000]' in error_msg:
+                            duplicate_errors.append(email)
+                        else:
+                            other_errors.append((email, err.get('error')))
+                    
+                    # Only show problematic errors (not compliance/invalid which are expected)
+                    if merge_field_errors:
+                        print(f"    ⚠️  Merge field errors: {len(merge_field_errors)}")
+                        for email, msg in merge_field_errors[:3]:
+                            print(f"        {email}: {msg}")
+                    if other_errors:
+                        print(f"    ⚠️  Other errors: {len(other_errors)}")
+                        for email, msg in other_errors[:3]:
+                            print(f"        {email}: {msg}")
+                    # Informational (expected, not real problems)
+                    if duplicate_errors:
+                        print(f"    ℹ️  Already in Mailchimp (duplicate): {len(duplicate_errors)}")
+                    if compliance_errors:
+                        print(f"    ℹ️  Skipped (compliance state): {len(compliance_errors)}")
+                    if invalid_emails:
+                        print(f"    ℹ️  Skipped (invalid email): {len(invalid_emails)}")
                 
                 # Clean up after each batch to prevent memory buildup
                 import gc
@@ -298,5 +340,12 @@ async def bulk_upload_clients():
 
 
 if __name__ == "__main__":
-    asyncio.run(bulk_upload_clients())
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Bulk upload clients to Mailchimp')
+    parser.add_argument('--skip', type=int, default=0, 
+                        help='Number of records to skip (default: 0)')
+    args = parser.parse_args()
+    
+    asyncio.run(bulk_upload_clients(skip_records=args.skip))
 
