@@ -488,10 +488,20 @@ class Database:
     
     def reset_pabau_page_progress(self):
         """Reset progress (call when sync completes all pages)"""
-        with self.get_cursor() as cursor:
-            cursor.execute("""
-                DELETE FROM sync_progress WHERE key = 'last_pabau_page'
-            """)
+        try:
+            with self.get_cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sync_progress (
+                        key TEXT PRIMARY KEY,
+                        value INTEGER,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    DELETE FROM sync_progress WHERE key = 'last_pabau_page'
+                """)
+        except Exception:
+            pass  # Table may not exist yet, that's fine
 
 
 # Singleton instance

@@ -131,19 +131,58 @@ def init_database():
                     )
                 """)
                 logger.info("  ✅ Created sync_logs table")
-                
-                # Create indexes
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_pabau_id ON clients(pabau_id)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_opt_in_email ON clients(opt_in_email)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_pabau_id ON leads(pabau_id)")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_logs_created ON sync_logs(created_at DESC)")
-                logger.info("  ✅ Created indexes")
-                
-                logger.success("✅ Database schema created successfully!")
             else:
-                logger.info("✅ Database tables already exist")
+                logger.info("✅ Core tables already exist")
+            
+            # Always ensure appointments table exists (may have been missed)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS appointments (
+                    id SERIAL PRIMARY KEY,
+                    client_db_id INTEGER,
+                    client_pabau_id INTEGER NOT NULL,
+                    pabau_appointment_id BIGINT,
+                    appointment_date DATE,
+                    appointment_time TIME,
+                    appointment_datetime TIMESTAMP,
+                    location VARCHAR(100),
+                    service VARCHAR(255),
+                    duration VARCHAR(50),
+                    appointment_status VARCHAR(50),
+                    appt_with VARCHAR(100),
+                    created_by VARCHAR(100),
+                    created_date TIMESTAMP,
+                    cancellation_reason TEXT,
+                    pabau_last_synced_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT appointments_client_required CHECK (client_pabau_id IS NOT NULL),
+                    CONSTRAINT appointments_unique_key UNIQUE (client_pabau_id, appointment_datetime, service)
+                )
+            """)
+            logger.info("  ✅ Appointments table ready")
+            
+            # Always ensure sync_progress table exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_progress (
+                    key TEXT PRIMARY KEY,
+                    value INTEGER,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create indexes (IF NOT EXISTS is safe to re-run)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_pabau_id ON clients(pabau_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_opt_in_email ON clients(opt_in_email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_pabau_id ON leads(pabau_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_logs_created ON sync_logs(created_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_client_pabau_id ON appointments(client_pabau_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_datetime ON appointments(appointment_datetime)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(appointment_status)")
+            logger.info("  ✅ All indexes ready")
+            
+            logger.success("✅ Database schema initialized!")
                 
     except Exception as e:
         logger.error(f"Database initialization error: {e}")

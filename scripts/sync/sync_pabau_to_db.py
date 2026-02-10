@@ -350,6 +350,11 @@ async def sync_pabau_leads():
                     )
                 
                 except Exception as e:
+                    error_msg = str(e)
+                    # Silently skip leads whose email exists in clients (converted leads)
+                    if 'already exists in clients table' in error_msg:
+                        skipped_old += 1
+                        continue
                     print(f"  ❌ Error processing lead {lead_raw.get('id')}: {e}")
                     db.log_sync(
                         entity_type='lead',
