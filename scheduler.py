@@ -74,17 +74,13 @@ def job():
 def start_scheduler():
     """Start the background scheduler"""
     logger.info("Starting background scheduler...")
-    logger.info("Sync will run at :55 past every 3rd hour (00:55, 03:55, 06:55, 09:55, 12:55, 15:55, 18:55, 21:55)")
+    logger.info("Sync will run every 6 hours at: 00:55, 06:55, 12:55, 18:55")
     
-    # Schedule sync at :55 past specific hours (every 3 hours)
+    # Schedule sync every 6 hours
     schedule.every().day.at("00:55").do(job)
-    schedule.every().day.at("03:55").do(job)
     schedule.every().day.at("06:55").do(job)
-    schedule.every().day.at("09:55").do(job)
     schedule.every().day.at("12:55").do(job)
-    schedule.every().day.at("15:55").do(job)
     schedule.every().day.at("18:55").do(job)
-    schedule.every().day.at("21:55").do(job)
     
     # Skip initial sync on startup to avoid memory issues on Render free tier
     # To trigger manual sync immediately: set env var RUN_INITIAL_SYNC=true
