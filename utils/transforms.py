@@ -130,17 +130,45 @@ def transform_client_for_db(client_api_data: dict) -> dict:
     Returns:
         Dict matching expanded database schema
     """
-    details = client_api_data.get('details', {})
-    communications = client_api_data.get('communications', {})
-    created = client_api_data.get('created', {})
-    owner = created.get('owner', [{}])[0] if created.get('owner') else {}
-    address = client_api_data.get('address', {})
-    client_insights = client_api_data.get('client_insights', [])
-    insights = client_insights[0] if client_insights else {}
-    custom_fields = client_api_data.get('custom', [])
-    relationships = client_api_data.get('relationships', [])
-    insurance = client_api_data.get('insurance', {})
-    allergies = client_api_data.get('allergies', [])
+    details = client_api_data.get('details', {}) or {}
+    if not isinstance(details, dict):
+        details = {}
+    communications = client_api_data.get('communications', {}) or {}
+    if not isinstance(communications, dict):
+        communications = {}
+    created = client_api_data.get('created', {}) or {}
+    if not isinstance(created, dict):
+        created = {}
+    
+    # Owner can be a list of dicts, a string, or missing
+    owner_list = created.get('owner', []) or []
+    if isinstance(owner_list, list) and owner_list:
+        owner = owner_list[0] if isinstance(owner_list[0], dict) else {}
+    else:
+        owner = {}
+    
+    address = client_api_data.get('address', {}) or {}
+    if not isinstance(address, dict):
+        address = {}
+    
+    client_insights = client_api_data.get('client_insights', []) or []
+    if isinstance(client_insights, list) and client_insights:
+        insights = client_insights[0] if isinstance(client_insights[0], dict) else {}
+    else:
+        insights = {}
+    
+    custom_fields = client_api_data.get('custom', []) or []
+    if not isinstance(custom_fields, list):
+        custom_fields = []
+    relationships = client_api_data.get('relationships', []) or []
+    if not isinstance(relationships, list):
+        relationships = []
+    insurance = client_api_data.get('insurance', {}) or {}
+    if not isinstance(insurance, dict):
+        insurance = {}
+    allergies = client_api_data.get('allergies', []) or []
+    if not isinstance(allergies, list):
+        allergies = []
     
     # Extract DOB and calculate age
     dob = details.get('DOB')
@@ -212,7 +240,7 @@ def transform_client_for_db(client_api_data: dict) -> dict:
         # Identifiers
         'pabau_id': details.get('id'),
         'custom_id': details.get('custom_id'),
-        'email': communications.get('email'),
+        'email': (communications.get('email') or '').strip() or None,
         
         # Basic info (existing)
         'first_name': details.get('first_name'),
