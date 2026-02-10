@@ -80,132 +80,136 @@ async def sync_pabau_clients():
             sync_time = datetime.now()
             total_fetched = 0
             pages_processed_this_batch = 0
-        
-        while True:
-            # Fetch one page at a time
-            response = await pabau.get_contacts(page=page, page_size=50)
-            clients_on_page = response.get("clients", [])
             
-            if not clients_on_page:
-                print(f"  Page {page}: Empty - reached end of data")
-                # Reset page counter since we've finished
-                db.reset_pabau_page_progress()
-                break
-            
-            total_fetched += len(clients_on_page)
-            pages_processed_this_batch += 1
-            
-            # Progress update and memory cleanup more frequently
-            if page % 20 == 0:
-                elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
-                print(f"  Page {page}: Fetched {total_fetched} clients so far ({elapsed:.1f} min, "
-                      f"{clients_updated} new, {skipped_old} old, {skipped_no_email} no email)")
-                # Force garbage collection to prevent memory buildup
-                gc.collect()
-                # Add a tiny sleep to let other threads breathe
-                await asyncio.sleep(0.1)
-            
-            # Process clients on this page
-            for client_raw in clients_on_page:
-                try:
-                    client_data = transform_client_for_db(client_raw)
-                    
-                    # Skip if no email
-                    if not client_data['email']:
-                        skipped_no_email += 1
-                        continue
-                    
-                    # Filter by created_date - only process clients created after last sync
-                    if cutoff_date:
-                        created_date_str = client_data.get('created_date')
-                        if not created_date_str:
-                            skipped_old += 1
+            while True:
+                # Fetch one page at a time
+                response = await pabau.get_contacts(page=page, page_size=50)
+                clients_on_page = response.get("clients", [])
+                
+                if not clients_on_page:
+                    print(f"  Page {page}: Empty - reached end of data")
+                    # Reset page counter since we've finished
+                    db.reset_pabau_page_progress()
+                    break
+                
+                total_fetched += len(clients_on_page)
+                pages_processed_this_batch += 1
+                
+                # Progress update and memory cleanup more frequently
+                if page % 20 == 0:
+                    elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
+                    print(f"  Page {page}: Fetched {total_fetched} clients so far ({elapsed:.1f} min, "
+                          f"{clients_updated} new, {skipped_old} old, {skipped_no_email} no email)")
+                    # Force garbage collection to prevent memory buildup
+                    gc.collect()
+                    # Add a tiny sleep to let other threads breathe
+                    await asyncio.sleep(0.1)
+                
+                # Process clients on this page
+                for client_raw in clients_on_page:
+                    try:
+                        client_data = transform_client_for_db(client_raw)
+                        
+                        # Skip if no email
+                        if not client_data['email']:
+                            skipped_no_email += 1
                             continue
                         
-                        # Parse string date to datetime
-                        try:
-                            if isinstance(created_date_str, str):
-                                created_date = datetime.strptime(created_date_str, '%Y-%m-%d %H:%M:%S')
-                            elif isinstance(created_date_str, datetime):
-                                created_date = created_date_str
-                            else:
+                        # Filter by created_date - only process clients created after last sync
+                        if cutoff_date:
+                            created_date_str = client_data.get('created_date')
+                            if not created_date_str:
                                 skipped_old += 1
                                 continue
                             
-                            # Skip if created before last sync
-                            if created_date <= cutoff_date:
+                            # Parse string date to datetime
+                            try:
+                                if isinstance(created_date_str, str):
+                                    created_date = datetime.strptime(created_date_str, '%Y-%m-%d %H:%M:%S')
+                                elif isinstance(created_date_str, datetime):
+                                    created_date = created_date_str
+                                else:
+                                    skipped_old += 1
+                                    continue
+                                
+                                # Skip if created before last sync
+                                if created_date <= cutoff_date:
+                                    skipped_old += 1
+                                    continue
+                            except:
                                 skipped_old += 1
                                 continue
-                        except:
-                            skipped_old += 1
-                            continue
+                        
+                        # Upsert client (only new ones)
+                        db_id = db.upsert_client(client_data)
+                        clients_updated += 1
+                        
+                        # Update pabau_last_synced_at to track this sync
+                        with db.get_cursor() as cursor:
+                            cursor.execute("""
+                                UPDATE clients 
+                                SET pabau_last_synced_at = %s
+                                WHERE id = %s
+                            """, (sync_time, db_id))
+                        
+                        # Sync appointments for this client
+                        appointments = transform_appointments_from_client(client_raw)
+                        for appt_data in appointments:
+                            db.upsert_appointment(appt_data)
+                            appointments_updated += 1
+                        
+                        db.log_sync(
+                            entity_type='client',
+                            entity_id=db_id,
+                            pabau_id=client_data['pabau_id'],
+                            email=client_data['email'],
+                            action='sync_pabau_client',
+                            status='success',
+                            message=f'Client and {len(appointments)} appointments synced'
+                        )
                     
-                    # Upsert client (only new ones)
-                    db_id = db.upsert_client(client_data)
-                    clients_updated += 1
-                    
-                    # Update pabau_last_synced_at to track this sync
-                    with db.get_cursor() as cursor:
-                        cursor.execute("""
-                            UPDATE clients 
-                            SET pabau_last_synced_at = %s
-                            WHERE id = %s
-                        """, (sync_time, db_id))
-                    
-                    # Sync appointments for this client
-                    appointments = transform_appointments_from_client(client_raw)
-                    for appt_data in appointments:
-                        db.upsert_appointment(appt_data)
-                        appointments_updated += 1
-                    
-                    db.log_sync(
-                        entity_type='client',
-                        entity_id=db_id,
-                        pabau_id=client_data['pabau_id'],
-                        email=client_data['email'],
-                        action='sync_pabau_client',
-                        status='success',
-                        message=f'Client and {len(appointments)} appointments synced'
-                    )
+                    except Exception as e:
+                        print(f"  ❌ Error processing client {client_raw.get('details', {}).get('id')}: {e}")
+                        db.log_sync(
+                            entity_type='client',
+                            entity_id=None,
+                            pabau_id=client_raw.get('details', {}).get('id'),
+                            email=client_raw.get('communications', {}).get('email', ''),
+                            action='sync_pabau_client',
+                            status='error',
+                            error_details=str(e)
+                        )
                 
-                except Exception as e:
-                    print(f"  ❌ Error processing client {client_raw.get('details', {}).get('id')}: {e}")
-                    db.log_sync(
-                        entity_type='client',
-                        entity_id=None,
-                        pabau_id=client_raw.get('details', {}).get('id'),
-                        email=client_raw.get('communications', {}).get('email', ''),
-                        action='sync_pabau_client',
-                        status='error',
-                        error_details=str(e)
-                    )
-            
-            # Check if batch is complete
-            if pages_processed_this_batch >= PAGES_PER_BATCH:
-                batch_elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
-                print(f"\n  ✅ Batch {batch_number} complete!")
-                print(f"     Pages: {pages_processed_this_batch}")
-                print(f"     Clients updated: {clients_updated}")
-                print(f"     Appointments: {appointments_updated}")
-                print(f"     Time: {batch_elapsed:.1f} minutes")
+                # Check if batch is complete
+                if pages_processed_this_batch >= PAGES_PER_BATCH:
+                    batch_elapsed = (datetime.now() - batch_start_time).total_seconds() / 60
+                    print(f"\n  ✅ Batch {batch_number} complete!")
+                    print(f"     Pages: {pages_processed_this_batch}")
+                    print(f"     Clients updated: {clients_updated}")
+                    print(f"     Appointments: {appointments_updated}")
+                    print(f"     Time: {batch_elapsed:.1f} minutes")
+                    
+                    total_clients_updated += clients_updated
+                    total_appointments_updated += appointments_updated
+                    total_pages_processed += pages_processed_this_batch
+                    
+                    # Move to next page for next batch
+                    page += 1
+                    batch_number += 1
+                    
+                    # Delay before next batch
+                    print(f"\n  ⏳ Waiting {DELAY_BETWEEN_BATCHES//60} minutes before next batch...")
+                    await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+                    
+                    # Continue with next batch (break inner loop, continue outer loop)
+                    break
                 
-                total_clients_updated += clients_updated
-                total_appointments_updated += appointments_updated
-                total_pages_processed += pages_processed_this_batch
-                
-                # Move to next page for next batch
+                # Move to next page
                 page += 1
-                batch_number += 1
-                
-                # Delay before next batch
-                print(f"\n  ⏳ Waiting {DELAY_BETWEEN_BATCHES//60} minutes before next batch...")
-                await asyncio.sleep(DELAY_BETWEEN_BATCHES)
-                
-                # Continue with next batch (break inner loop, continue outer loop)
-                break
             
-            # Move to next page
-            page += 1
+            # If inner loop ended because of empty page (end of data), break outer loop too
+            if not clients_on_page:
+                break
         
         # This print statement is now at the end after all batches
         elapsed_total = (datetime.now() - overall_start_time).total_seconds() / 60
