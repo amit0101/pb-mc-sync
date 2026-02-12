@@ -628,7 +628,7 @@ def transform_lead_for_db(lead_api_data: dict) -> dict:
         # Identifiers
         'pabau_id': lead_api_data.get('id'),
         'contact_id': lead_api_data.get('contact_id'),
-        'email': lead_api_data.get('email'),
+        'email': (lead_api_data.get('email') or '').strip() or None,
         
         # Basic info
         'salutation': lead_api_data.get('salutation'),

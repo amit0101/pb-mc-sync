@@ -286,7 +286,20 @@ class Database:
     def upsert_lead(self, lead_data: Dict[str, Any]) -> int:
         """Insert or update a lead"""
         with self.get_cursor() as cursor:
-            cursor.execute("""
+            try:
+                return self._execute_lead_upsert(cursor, lead_data)
+            except Exception as e:
+                if 'leads_email_key' in str(e):
+                    cursor.execute(
+                        "DELETE FROM leads WHERE email = %s AND pabau_id != %s",
+                        (lead_data['email'], lead_data['pabau_id'])
+                    )
+                    return self._execute_lead_upsert(cursor, lead_data)
+                raise
+
+    def _execute_lead_upsert(self, cursor, lead_data: Dict[str, Any]) -> int:
+        """Execute the lead INSERT ... ON CONFLICT upsert"""
+        cursor.execute("""
                 INSERT INTO leads (
                     pabau_id, contact_id, email, first_name, last_name,
                     salutation, phone, mobile, dob,
@@ -344,8 +357,8 @@ class Database:
                 RETURNING id
             """, lead_data)
             
-            result = cursor.fetchone()
-            return result['id']
+        result = cursor.fetchone()
+        return result['id']
     
     def bulk_upsert_leads(self, leads: List[Dict[str, Any]]) -> int:
         """Bulk insert/update leads"""
