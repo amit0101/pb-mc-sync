@@ -90,19 +90,28 @@ class Database:
         Returns:
             Database ID of inserted/updated client
         """
-        with self.get_cursor() as cursor:
-            try:
-                return self._execute_client_upsert(cursor, client_data)
-            except Exception as e:
-                if 'clients_email_key' in str(e):
-                    # Two different pabau_ids share the same email.
-                    # Delete the stale row and retry.
-                    cursor.execute(
-                        "DELETE FROM clients WHERE email = %s AND pabau_id != %s",
-                        (client_data['email'], client_data['pabau_id'])
-                    )
-                    return self._execute_client_upsert(cursor, client_data)
-                raise
+        conn = self.connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SAVEPOINT client_upsert")
+            result = self._execute_client_upsert(cursor, client_data)
+            cursor.execute("RELEASE SAVEPOINT client_upsert")
+            conn.commit()
+            return result
+        except Exception as e:
+            cursor.execute("ROLLBACK TO SAVEPOINT client_upsert")
+            if 'clients_email_key' in str(e):
+                cursor.execute(
+                    "DELETE FROM clients WHERE email = %s AND pabau_id != %s",
+                    (client_data['email'], client_data['pabau_id'])
+                )
+                result = self._execute_client_upsert(cursor, client_data)
+                conn.commit()
+                return result
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
 
     def _execute_client_upsert(self, cursor, client_data: Dict[str, Any]) -> int:
         """Execute the client INSERT ... ON CONFLICT upsert"""
@@ -285,17 +294,28 @@ class Database:
     
     def upsert_lead(self, lead_data: Dict[str, Any]) -> int:
         """Insert or update a lead"""
-        with self.get_cursor() as cursor:
-            try:
-                return self._execute_lead_upsert(cursor, lead_data)
-            except Exception as e:
-                if 'leads_email_key' in str(e):
-                    cursor.execute(
-                        "DELETE FROM leads WHERE email = %s AND pabau_id != %s",
-                        (lead_data['email'], lead_data['pabau_id'])
-                    )
-                    return self._execute_lead_upsert(cursor, lead_data)
-                raise
+        conn = self.connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SAVEPOINT lead_upsert")
+            result = self._execute_lead_upsert(cursor, lead_data)
+            cursor.execute("RELEASE SAVEPOINT lead_upsert")
+            conn.commit()
+            return result
+        except Exception as e:
+            cursor.execute("ROLLBACK TO SAVEPOINT lead_upsert")
+            if 'leads_email_key' in str(e):
+                cursor.execute(
+                    "DELETE FROM leads WHERE email = %s AND pabau_id != %s",
+                    (lead_data['email'], lead_data['pabau_id'])
+                )
+                result = self._execute_lead_upsert(cursor, lead_data)
+                conn.commit()
+                return result
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
 
     def _execute_lead_upsert(self, cursor, lead_data: Dict[str, Any]) -> int:
         """Execute the lead INSERT ... ON CONFLICT upsert"""
