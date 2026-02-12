@@ -60,6 +60,22 @@ def init_database():
                         created_date TIMESTAMP,
                         created_by_name VARCHAR(100),
                         created_by_id INTEGER,
+                        total_spend DECIMAL(10,2) DEFAULT 0,
+                        avg_spend DECIMAL(10,2) DEFAULT 0,
+                        total_completed INTEGER DEFAULT 0,
+                        total_pending INTEGER DEFAULT 0,
+                        total_cancelled INTEGER DEFAULT 0,
+                        total_visits INTEGER DEFAULT 0,
+                        total_noshow INTEGER DEFAULT 0,
+                        next_appt_date DATE,
+                        last_appt_date DATE,
+                        first_visit_date TIMESTAMP,
+                        last_appt_service VARCHAR(255),
+                        next_appt_service VARCHAR(255),
+                        primary_source_name VARCHAR(255),
+                        primary_source_id INTEGER,
+                        age INTEGER,
+                        mailing_postal VARCHAR(50),
                         mailchimp_status VARCHAR(20),
                         mailchimp_tags TEXT[],
                         pabau_last_synced_at TIMESTAMP,
@@ -104,6 +120,8 @@ def init_database():
                         deal_value DECIMAL(10,2),
                         opt_in_email_mailchimp SMALLINT DEFAULT 0,
                         opt_in_email SMALLINT DEFAULT 0,
+                        source_name VARCHAR(255),
+                        source_id INTEGER,
                         mailchimp_status VARCHAR(20),
                         mailchimp_tags TEXT[],
                         pabau_last_synced_at TIMESTAMP,
@@ -133,6 +151,38 @@ def init_database():
                 logger.info("  ✅ Created sync_logs table")
             else:
                 logger.info("✅ Core tables already exist")
+                
+                # Apply missing columns for field mapping update
+                logger.info("  Applying column migrations if needed...")
+                migration_columns_clients = [
+                    ("total_spend", "DECIMAL(10,2) DEFAULT 0"),
+                    ("avg_spend", "DECIMAL(10,2) DEFAULT 0"),
+                    ("total_completed", "INTEGER DEFAULT 0"),
+                    ("total_pending", "INTEGER DEFAULT 0"),
+                    ("total_cancelled", "INTEGER DEFAULT 0"),
+                    ("total_visits", "INTEGER DEFAULT 0"),
+                    ("total_noshow", "INTEGER DEFAULT 0"),
+                    ("next_appt_date", "DATE"),
+                    ("last_appt_date", "DATE"),
+                    ("first_visit_date", "TIMESTAMP"),
+                    ("last_appt_service", "VARCHAR(255)"),
+                    ("next_appt_service", "VARCHAR(255)"),
+                    ("primary_source_name", "VARCHAR(255)"),
+                    ("primary_source_id", "INTEGER"),
+                    ("age", "INTEGER"),
+                    ("mailing_postal", "VARCHAR(50)"),
+                ]
+                for col_name, col_type in migration_columns_clients:
+                    cursor.execute(f"ALTER TABLE clients ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+                
+                migration_columns_leads = [
+                    ("source_name", "VARCHAR(255)"),
+                    ("source_id", "INTEGER"),
+                ]
+                for col_name, col_type in migration_columns_leads:
+                    cursor.execute(f"ALTER TABLE leads ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+                
+                logger.info("  ✅ Column migrations applied")
             
             # Always ensure appointments table exists (may have been missed)
             cursor.execute("""

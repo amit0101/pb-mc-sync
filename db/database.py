@@ -98,6 +98,12 @@ class Database:
                     phone, mobile,
                     opt_in_email, opt_in_sms, opt_in_phone, opt_in_post, opt_in_newsletter,
                     created_date, created_by_name, created_by_id,
+                    total_spend, avg_spend, total_completed, total_pending, total_cancelled,
+                    total_visits, total_noshow,
+                    next_appt_date, last_appt_date, first_visit_date,
+                    last_appt_service, next_appt_service,
+                    primary_source_name, primary_source_id, age,
+                    mailing_postal,
                     pabau_last_synced_at
                 ) VALUES (
                     %(pabau_id)s, %(custom_id)s, %(email)s, %(first_name)s, %(last_name)s,
@@ -105,6 +111,12 @@ class Database:
                     %(phone)s, %(mobile)s,
                     %(opt_in_email)s, %(opt_in_sms)s, %(opt_in_phone)s, %(opt_in_post)s, %(opt_in_newsletter)s,
                     %(created_date)s, %(created_by_name)s, %(created_by_id)s,
+                    %(total_spend)s, %(avg_spend)s, %(total_completed)s, %(total_pending)s, %(total_cancelled)s,
+                    %(total_visits)s, %(total_noshow)s,
+                    %(next_appt_date)s, %(last_appt_date)s, %(first_visit_date)s,
+                    %(last_appt_service)s, %(next_appt_service)s,
+                    %(primary_source_name)s, %(primary_source_id)s, %(age)s,
+                    %(mailing_postal)s,
                     CURRENT_TIMESTAMP
                 )
                 ON CONFLICT (pabau_id) DO UPDATE SET
@@ -127,6 +139,22 @@ class Database:
                     created_date = EXCLUDED.created_date,
                     created_by_name = EXCLUDED.created_by_name,
                     created_by_id = EXCLUDED.created_by_id,
+                    total_spend = EXCLUDED.total_spend,
+                    avg_spend = EXCLUDED.avg_spend,
+                    total_completed = EXCLUDED.total_completed,
+                    total_pending = EXCLUDED.total_pending,
+                    total_cancelled = EXCLUDED.total_cancelled,
+                    total_visits = EXCLUDED.total_visits,
+                    total_noshow = EXCLUDED.total_noshow,
+                    next_appt_date = EXCLUDED.next_appt_date,
+                    last_appt_date = EXCLUDED.last_appt_date,
+                    first_visit_date = EXCLUDED.first_visit_date,
+                    last_appt_service = EXCLUDED.last_appt_service,
+                    next_appt_service = EXCLUDED.next_appt_service,
+                    primary_source_name = EXCLUDED.primary_source_name,
+                    primary_source_id = EXCLUDED.primary_source_id,
+                    age = EXCLUDED.age,
+                    mailing_postal = EXCLUDED.mailing_postal,
                     pabau_last_synced_at = CURRENT_TIMESTAMP
                 RETURNING id
             """, client_data)
@@ -253,6 +281,7 @@ class Database:
                     created_date, updated_date, converted_date,
                     pipeline_name, pipeline_stage_id, pipeline_stage_name,
                     deal_value, opt_in_email_mailchimp,
+                    source_name, source_id,
                     pabau_last_synced_at
                 ) VALUES (
                     %(pabau_id)s, %(contact_id)s, %(email)s, %(first_name)s, %(last_name)s,
@@ -263,6 +292,7 @@ class Database:
                     %(created_date)s, %(updated_date)s, %(converted_date)s,
                     %(pipeline_name)s, %(pipeline_stage_id)s, %(pipeline_stage_name)s,
                     %(deal_value)s, %(opt_in_email_mailchimp)s,
+                    %(source_name)s, %(source_id)s,
                     CURRENT_TIMESTAMP
                 )
                 ON CONFLICT (pabau_id) DO UPDATE SET
@@ -293,6 +323,8 @@ class Database:
                     pipeline_stage_name = EXCLUDED.pipeline_stage_name,
                     deal_value = EXCLUDED.deal_value,
                     opt_in_email_mailchimp = EXCLUDED.opt_in_email_mailchimp,
+                    source_name = EXCLUDED.source_name,
+                    source_id = EXCLUDED.source_id,
                     pabau_last_synced_at = CURRENT_TIMESTAMP
                 RETURNING id
             """, lead_data)
