@@ -130,6 +130,9 @@ def transform_client_for_db(client_api_data: dict) -> dict:
     Returns:
         Dict matching expanded database schema
     """
+    if not isinstance(client_api_data, dict):
+        raise ValueError(f"Expected dict, got {type(client_api_data).__name__}: {str(client_api_data)[:100]}")
+    
     details = client_api_data.get('details', {}) or {}
     if not isinstance(details, dict):
         details = {}

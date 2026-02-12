@@ -91,7 +91,22 @@ class Database:
             Database ID of inserted/updated client
         """
         with self.get_cursor() as cursor:
-            cursor.execute("""
+            try:
+                return self._execute_client_upsert(cursor, client_data)
+            except Exception as e:
+                if 'clients_email_key' in str(e):
+                    # Two different pabau_ids share the same email.
+                    # Delete the stale row and retry.
+                    cursor.execute(
+                        "DELETE FROM clients WHERE email = %s AND pabau_id != %s",
+                        (client_data['email'], client_data['pabau_id'])
+                    )
+                    return self._execute_client_upsert(cursor, client_data)
+                raise
+
+    def _execute_client_upsert(self, cursor, client_data: Dict[str, Any]) -> int:
+        """Execute the client INSERT ... ON CONFLICT upsert"""
+        cursor.execute("""
                 INSERT INTO clients (
                     pabau_id, custom_id, email, first_name, last_name,
                     salutation, gender, dob, location, is_active,
@@ -159,8 +174,8 @@ class Database:
                 RETURNING id
             """, client_data)
             
-            result = cursor.fetchone()
-            return result['id']
+        result = cursor.fetchone()
+        return result['id']
     
     def bulk_upsert_clients(self, clients: List[Dict[str, Any]]) -> int:
         """Bulk insert/update clients"""
