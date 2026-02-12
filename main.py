@@ -232,6 +232,18 @@ def init_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(appointment_status)")
             logger.info("  ✅ All indexes ready")
             
+            # Fix email uniqueness trigger — allow same email in both tables
+            # A client should never be blocked because a lead has the same email
+            cursor.execute("""
+                CREATE OR REPLACE FUNCTION check_email_unique()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            """)
+            logger.info("  ✅ Email trigger updated (allows same email in clients & leads)")
+            
             logger.success("✅ Database schema initialized!")
                 
     except Exception as e:
