@@ -2,6 +2,7 @@
 Mailchimp API Client
 """
 import hashlib
+import json
 import httpx
 from typing import Dict, List, Optional, Any
 from loguru import logger
@@ -31,7 +32,7 @@ class MailchimpClient:
         
         # Configure limits to prevent connection pool exhaustion
         limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
-        async with httpx.AsyncClient(timeout=60.0, limits=limits) as client:
+        async with httpx.AsyncClient(timeout=120.0, limits=limits) as client:
             try:
                 response = await client.request(
                     method=method,
@@ -259,6 +260,71 @@ class MailchimpClient:
         logger.info(f"Fetched {len(all_members)} total members")
         return all_members
     
+    async def start_batch(self, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Submit batch operations to Mailchimp's async batch API.
+        Operations run in background on Mailchimp's servers.
+        
+        Args:
+            operations: List of operation dicts with method, path, body, operation_id
+            
+        Returns:
+            Batch response with id, status, total_operations
+        """
+        logger.info(f"Submitting batch with {len(operations)} operations")
+        return await self._request("POST", "batches", json_data={"operations": operations})
+    
+    async def get_batch_status(self, batch_id: str) -> Dict[str, Any]:
+        """
+        Check status of a batch operation.
+        
+        Returns:
+            Batch status with id, status, finished_operations, errored_operations, etc.
+        """
+        return await self._request("GET", f"batches/{batch_id}")
+    
+    def build_member_operation(self, member: Dict[str, Any], operation_id: str = "") -> Dict[str, Any]:
+        """
+        Build a single batch operation for upserting a member.
+        Uses PUT to create-or-update.
+        
+        Args:
+            member: Dict with email_address, status, merge_fields, tags
+            operation_id: Optional ID to track this operation
+            
+        Returns:
+            Operation dict for the batch API
+        """
+        email = member['email_address']
+        subscriber_hash = self.get_subscriber_hash(email)
+        
+        body = {
+            "email_address": email,
+            "status_if_new": member.get('status', 'subscribed'),
+            "merge_fields": member.get('merge_fields', {}),
+        }
+        
+        return {
+            "method": "PUT",
+            "path": f"/lists/{self.list_id}/members/{subscriber_hash}",
+            "operation_id": operation_id or subscriber_hash,
+            "body": json.dumps(body),
+        }
+    
+    def build_tag_operation(self, email: str, tags: List[str], operation_id: str = "") -> Dict[str, Any]:
+        """
+        Build a batch operation for adding tags to a member.
+        """
+        subscriber_hash = self.get_subscriber_hash(email)
+        body = {"tags": [{"name": tag, "status": "active"} for tag in tags]}
+        
+        return {
+            "method": "POST",
+            "path": f"/lists/{self.list_id}/members/{subscriber_hash}/tags",
+            "operation_id": operation_id or f"tag-{subscriber_hash}",
+            "body": json.dumps(body),
+        }
+
     @staticmethod
     def calculate_data_hash(member_data: Dict[str, Any]) -> str:
         """

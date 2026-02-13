@@ -263,56 +263,90 @@ def build_lead_merge_fields(lead):
     return merge_fields
 
 
-async def upload_single_batch(mc, batch, batch_index, batch_label):
-    """Upload a single batch of members to Mailchimp"""
-    try:
-        print(f"    [{batch_label}] Batch {batch_index}: Uploading {len(batch)} members...")
-        result = await mc.batch_subscribe(batch, update_existing=True)
-        batch_success = result.get('total_created', 0) + result.get('total_updated', 0)
-        batch_errors = result.get('error_count', 0)
-        print(f"    [{batch_label}] Batch {batch_index}: ✅ {batch_success} success, ❌ {batch_errors} errors")
-        return batch_success, batch_errors
-    except Exception as e:
-        print(f"    [{batch_label}] Batch {batch_index}: ❌ Failed - {str(e)[:100]}")
-        return 0, len(batch)
-
-
 async def upload_batch(mc, members_batch, batch_label, db, entity_type='client'):
-    """Upload batches of members to Mailchimp with concurrent uploads"""
-    batch_size = 500
-    concurrency = 5  # 5 parallel uploads (Mailchimp allows 10 concurrent connections)
-    success_count = 0
-    error_count = 0
+    """Upload members to Mailchimp using the async Batch Operations API.
     
-    # Split into batches of 500
-    batches = []
-    for batch_num in range(0, len(members_batch), batch_size):
-        chunk = members_batch[batch_num:batch_num + batch_size]
-        batch_index = batch_num // batch_size + 1
-        batches.append((chunk, batch_index))
+    Submits all operations in one request. Mailchimp processes them
+    asynchronously on their servers (no timeouts, no connection limits).
+    We poll until finished.
+    """
+    if not members_batch:
+        return 0, 0
     
-    total_batches = len(batches)
-    print(f"    [{batch_label}] {total_batches} batches, {concurrency} concurrent")
+    # Build operations: PUT for member upsert + POST for tags
+    operations = []
+    for i, member in enumerate(members_batch):
+        # Member upsert operation
+        operations.append(mc.build_member_operation(
+            member, 
+            operation_id=f"{batch_label}-{i}"
+        ))
+        # Tag operation (if tags provided)
+        tags = member.get('tags', [])
+        if tags:
+            operations.append(mc.build_tag_operation(
+                member['email_address'],
+                tags,
+                operation_id=f"{batch_label}-tag-{i}"
+            ))
     
-    # Process in groups of `concurrency`
-    for group_start in range(0, total_batches, concurrency):
-        group = batches[group_start:group_start + concurrency]
-        group_num = group_start // concurrency + 1
-        total_groups = (total_batches + concurrency - 1) // concurrency
-        
-        results = await asyncio.gather(
-            *[upload_single_batch(mc, chunk, idx, batch_label) for chunk, idx in group]
-        )
-        
-        for s, e in results:
-            success_count += s
-            error_count += e
-        
-        print(f"    [{batch_label}] Group {group_num}/{total_groups} done")
-        gc.collect()
-        await asyncio.sleep(0.3)
+    total_ops = len(operations)
+    print(f"    [{batch_label}] Submitting {total_ops} operations ({len(members_batch)} members) via Batch API...")
     
-    return success_count, error_count
+    # Submit — Mailchimp has a soft limit per batch, split if very large
+    max_ops_per_batch = 20000
+    batch_ids = []
+    
+    for chunk_start in range(0, total_ops, max_ops_per_batch):
+        chunk = operations[chunk_start:chunk_start + max_ops_per_batch]
+        try:
+            result = await mc.start_batch(chunk)
+            batch_id = result.get('id')
+            batch_ids.append(batch_id)
+            print(f"    [{batch_label}] Batch submitted: {batch_id} ({len(chunk)} ops)")
+        except Exception as e:
+            print(f"    [{batch_label}] ❌ Failed to submit batch: {str(e)[:200]}")
+            return 0, len(members_batch)
+    
+    # Poll for completion
+    print(f"    [{batch_label}] Waiting for Mailchimp to process...")
+    total_finished = 0
+    total_errored = 0
+    
+    for batch_id in batch_ids:
+        poll_interval = 5  # Start at 5 seconds
+        while True:
+            await asyncio.sleep(poll_interval)
+            try:
+                status = await mc.get_batch_status(batch_id)
+                state = status.get('status', 'unknown')
+                finished = status.get('finished_operations', 0)
+                errored = status.get('errored_operations', 0)
+                total = status.get('total_operations', 0)
+                
+                print(f"    [{batch_label}] {batch_id}: {state} - {finished}/{total} done, {errored} errors")
+                
+                if state == 'finished':
+                    total_finished += finished - errored
+                    total_errored += errored
+                    break
+                
+                # Adaptive polling: longer waits as we go
+                if poll_interval < 30:
+                    poll_interval = min(poll_interval + 5, 30)
+                    
+            except Exception as e:
+                print(f"    [{batch_label}] Poll error: {str(e)[:100]}, retrying...")
+                await asyncio.sleep(10)
+    
+    # Estimate member success (ops include both upsert + tag operations)
+    member_count = len(members_batch)
+    success_count = member_count - total_errored  # Approximate
+    if success_count < 0:
+        success_count = 0
+    
+    print(f"    [{batch_label}] ✅ Complete: ~{success_count} success, {total_errored} errors")
+    return success_count, total_errored
 
 
 async def sync_clients_to_mailchimp(db, mc, last_mailchimp_upload):
