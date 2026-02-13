@@ -110,10 +110,14 @@ def build_client_merge_fields(client):
     if client.get('gender'):
         merge_fields['MMERGE6'] = client['gender']
     
-    # Appointment Date (from lateral join to appointments table)
+    # Appointment Date (from lateral join, fallback to Pabau client_insights)
     try:
-        if client.get('appointment_date'):
-            merge_fields['MMERGE9'] = client['appointment_date'].strftime('%m/%d/%Y')
+        appt_date = client.get('appointment_date') or client.get('last_appt_date')
+        if appt_date:
+            if isinstance(appt_date, date):
+                merge_fields['MMERGE9'] = appt_date.strftime('%m/%d/%Y')
+            else:
+                merge_fields['MMERGE9'] = datetime.strptime(str(appt_date), '%Y-%m-%d').strftime('%m/%d/%Y')
     except (AttributeError, ValueError):
         pass
     
@@ -128,9 +132,10 @@ def build_client_merge_fields(client):
     except (AttributeError, ValueError):
         pass
     
-    # Service (from lateral join to appointments table)
-    if client.get('service'):
-        merge_fields['MMERGE14'] = str(client['service'])[:100]
+    # Service (from lateral join, fallback to Pabau client_insights)
+    service = client.get('service') or client.get('last_appt_service')
+    if service:
+        merge_fields['MMERGE14'] = str(service)[:100]
     
     # Client System ID (pabau_id)
     try:
