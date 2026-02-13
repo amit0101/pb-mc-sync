@@ -599,18 +599,10 @@ def transform_lead_for_db(lead_api_data: dict) -> dict:
     source = lead_api_data.get('source', {})
     deal = lead_api_data.get('deal', {})
     
-    # Extract opt-in from custom field and convert to 0/1 format (like clients)
-    opt_in_value = extract_custom_field(custom_fields, 'opt_in_email_lead')
-    # Convert to 0 or 1, default to 0
-    if opt_in_value is None:
-        opt_in_email_mailchimp = 0
-    elif isinstance(opt_in_value, int):
-        opt_in_email_mailchimp = 1 if opt_in_value == 1 else 0
-    elif isinstance(opt_in_value, str):
-        # Handle string values like 'Opted In', 'true', '1', etc.
-        opt_in_email_mailchimp = 1 if opt_in_value.lower() in ['opted in', 'true', '1', 'yes'] else 0
-    else:
-        opt_in_email_mailchimp = 0
+    # Default leads to opted-in (1). Mailchimp is the source of truth for opt-out:
+    # Step 2 (fetch_mailchimp_unsubscribes) sets this to 0 for anyone who unsubscribed.
+    # We no longer rely on Pabau's custom field 'opt_in_email_lead' which was never populated.
+    opt_in_email_mailchimp = 1
     
     # Process custom fields as JSON
     custom_fields_json = {}

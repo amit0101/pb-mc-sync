@@ -147,25 +147,31 @@ def build_client_merge_fields(client):
     except (ValueError, TypeError):
         return None  # Skip if no valid system ID
     
-    # Client ID (custom_id or DB id)
+    # Client ID (custom_id or DB id) → MMERGE16 (number type)
     if client.get('custom_id'):
-        merge_fields['CLIENTID'] = str(client['custom_id'])
+        try:
+            merge_fields['MMERGE16'] = int(client['custom_id'])
+        except (ValueError, TypeError):
+            pass
     elif client.get('client_db_id'):
-        merge_fields['CLIENTID'] = str(client['client_db_id'])
+        try:
+            merge_fields['MMERGE16'] = int(client['client_db_id'])
+        except (ValueError, TypeError):
+            pass
     
     # Source (primary_source_name from Pabau)
     if client.get('primary_source_name'):
         merge_fields['SOURCE'] = str(client['primary_source_name'])[:100]
     
     # Total Appointments (total_completed)
-    merge_fields['TOTALAPP'] = int(client.get('total_completed') or 0)
+    merge_fields['MMERGE30'] = int(client.get('total_completed') or 0)
     
     # Email Marketing opt-in status
     merge_fields['EMOPTIN'] = 'Yes' if client.get('opt_in_email') == 1 else 'No'
     
-    # Postcode (from client address if available)
+    # Postcode → MMERGE22
     if client.get('mailing_postal'):
-        merge_fields['POSTCODE'] = str(client['mailing_postal'])[:20]
+        merge_fields['MMERGE22'] = str(client['mailing_postal'])[:20]
     
     # --- ADD fields (10 new computed fields) ---
     merge_fields['TOTSPEND'] = flags['total_spend']
@@ -213,19 +219,19 @@ def build_lead_merge_fields(lead):
     
     # Lead Source
     if lead.get('source_name'):
-        merge_fields['LEADSRC'] = str(lead['source_name'])[:100]
+        merge_fields['MMERGE20'] = str(lead['source_name'])[:100]
     
     # Pipeline Stage
     if lead.get('pipeline_stage_name'):
-        merge_fields['PIPELINE'] = str(lead['pipeline_stage_name'])[:100]
+        merge_fields['MMERGE21'] = str(lead['pipeline_stage_name'])[:100]
     
-    # Postcode
+    # Postcode → MMERGE22
     if lead.get('mailing_postal'):
-        merge_fields['POSTCODE'] = str(lead['mailing_postal'])[:20]
+        merge_fields['MMERGE22'] = str(lead['mailing_postal'])[:20]
     
     # Lead Location
     if lead.get('location_name'):
-        merge_fields['LEADLOC'] = str(lead['location_name'])[:50]
+        merge_fields['MMERGE24'] = str(lead['location_name'])[:50]
     
     # Lead Age (calculated from DOB)
     if lead.get('dob'):
@@ -236,7 +242,7 @@ def build_lead_merge_fields(lead):
                 dob_date = datetime.strptime(str(lead['dob']), '%Y-%m-%d').date()
             age = (date.today() - dob_date).days // 365
             if 0 < age < 150:
-                merge_fields['LEADAGE'] = age
+                merge_fields['MMERGE23'] = age
         except (ValueError, TypeError):
             pass
     
@@ -244,7 +250,7 @@ def build_lead_merge_fields(lead):
     try:
         lead_id_val = int(lead['pabau_id'])
         if 0 < lead_id_val < 2147483647:
-            merge_fields['LEADID'] = lead_id_val
+            merge_fields['MMERGE29'] = lead_id_val
     except (ValueError, TypeError):
         pass
     
@@ -335,9 +341,9 @@ async def sync_clients_to_mailchimp(db, mc, last_mailchimp_upload):
                 c.last_appt_date,
                 c.last_appt_service,
                 c.primary_source_name,
+                c.created_date,
                 a.appointment_date,
-                a.service,
-                a.created_date
+                a.service
             FROM sync_logs sl
             INNER JOIN clients c ON c.email = sl.email
             LEFT JOIN LATERAL (
