@@ -263,39 +263,54 @@ def build_lead_merge_fields(lead):
     return merge_fields
 
 
+async def upload_single_batch(mc, batch, batch_index, batch_label):
+    """Upload a single batch of members to Mailchimp"""
+    try:
+        print(f"    [{batch_label}] Batch {batch_index}: Uploading {len(batch)} members...")
+        result = await mc.batch_subscribe(batch, update_existing=True)
+        batch_success = result.get('total_created', 0) + result.get('total_updated', 0)
+        batch_errors = result.get('error_count', 0)
+        print(f"    [{batch_label}] Batch {batch_index}: ✅ {batch_success} success, ❌ {batch_errors} errors")
+        return batch_success, batch_errors
+    except Exception as e:
+        print(f"    [{batch_label}] Batch {batch_index}: ❌ Failed - {str(e)[:100]}")
+        return 0, len(batch)
+
+
 async def upload_batch(mc, members_batch, batch_label, db, entity_type='client'):
-    """Upload a batch of members to Mailchimp"""
+    """Upload batches of members to Mailchimp with concurrent uploads"""
     batch_size = 500
+    concurrency = 5  # 5 parallel uploads (Mailchimp allows 10 concurrent connections)
     success_count = 0
     error_count = 0
     
+    # Split into batches of 500
+    batches = []
     for batch_num in range(0, len(members_batch), batch_size):
-        batch = members_batch[batch_num:batch_num + batch_size]
+        chunk = members_batch[batch_num:batch_num + batch_size]
         batch_index = batch_num // batch_size + 1
+        batches.append((chunk, batch_index))
+    
+    total_batches = len(batches)
+    print(f"    [{batch_label}] {total_batches} batches, {concurrency} concurrent")
+    
+    # Process in groups of `concurrency`
+    for group_start in range(0, total_batches, concurrency):
+        group = batches[group_start:group_start + concurrency]
+        group_num = group_start // concurrency + 1
+        total_groups = (total_batches + concurrency - 1) // concurrency
         
-        try:
-            print(f"    [{batch_label}] Batch {batch_index}: Uploading {len(batch)} members...")
-            result = await mc.batch_subscribe(batch, update_existing=True)
-            
-            batch_success = result.get('total_created', 0) + result.get('total_updated', 0)
-            batch_errors = result.get('error_count', 0)
-            
-            success_count += batch_success
-            error_count += batch_errors
-            
-            print(f"    [{batch_label}] Batch {batch_index}: ✅ {batch_success} success, ❌ {batch_errors} errors")
-            
-            # Clean up
-            batch = None
-            result = None
-            gc.collect()
-            await asyncio.sleep(0.5)
-            
-        except Exception as e:
-            print(f"    [{batch_label}] Batch {batch_index}: ❌ Failed - {str(e)[:100]}")
-            error_count += len(batch)
-            gc.collect()
-            await asyncio.sleep(1)
+        results = await asyncio.gather(
+            *[upload_single_batch(mc, chunk, idx, batch_label) for chunk, idx in group]
+        )
+        
+        for s, e in results:
+            success_count += s
+            error_count += e
+        
+        print(f"    [{batch_label}] Group {group_num}/{total_groups} done")
+        gc.collect()
+        await asyncio.sleep(0.3)
     
     return success_count, error_count
 
